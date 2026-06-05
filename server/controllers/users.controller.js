@@ -51,7 +51,9 @@ async function syncUsers(req, res, next) {
     )
 
     const activeUsers = users.filter(
-      (user) => !deletedKeys.has(`${String(user.userId)}-${user.deviceIp || ''}`),
+      (user) =>
+        !deletedKeys.has(`${String(user.userId)}-${user.deviceIp || ''}`) &&
+        !deletedKeys.has(`${String(user.userId)}-`),
     )
 
     if (activeUsers.length > 0) {
@@ -121,15 +123,21 @@ async function deleteUser(req, res, next) {
       return res.json({ deleted: 1, localOnly: true })
     }
 
-    const filter = {
+    const tombstoneFilter = {
       userId: String(userId),
       deviceIp: deviceIp || '',
     }
 
-    const result = await users.deleteOne(filter)
+    const deleteFilter = { userId: String(userId) }
+
+    if (deviceIp) {
+      deleteFilter.deviceIp = deviceIp
+    }
+
+    const result = await users.deleteMany(deleteFilter)
     await deletedUsers.updateOne(
-      filter,
-      { $set: { ...filter, deletedAt: new Date() } },
+      tombstoneFilter,
+      { $set: { ...tombstoneFilter, deletedAt: new Date() } },
       { upsert: true },
     )
 
