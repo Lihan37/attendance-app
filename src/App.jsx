@@ -91,21 +91,29 @@ export default function App() {
     return Array.from(rows.values())
   }
 
-  async function pullDeviceData({ silent = false, targetBaseUrl = baseUrl } = {}) {
+  async function pullDeviceData({
+    silent = false,
+    targetBaseUrl = baseUrl,
+    syncDeviceUsers = true,
+    syncDeviceAttendance = true,
+  } = {}) {
     if (!electronReady) {
       throw new Error('Electron API is unavailable. Run the desktop app.')
     }
 
     const [deviceUsers, deviceAttendance] = await Promise.all([
-      window.electronAPI.fetchUsers(),
-      window.electronAPI.fetchAttendance(),
+      syncDeviceUsers ? window.electronAPI.fetchUsers() : Promise.resolve([]),
+      syncDeviceAttendance ? window.electronAPI.fetchAttendance() : Promise.resolve([]),
     ])
 
     const validAttendance = deviceAttendance.filter(isValidAttendanceLog)
     const displayUsers =
-      deviceUsers.length > 0 ? deviceUsers : buildUsersFromAttendance(validAttendance)
+      syncDeviceUsers && deviceUsers.length > 0 ? deviceUsers : buildUsersFromAttendance(validAttendance)
 
-    await syncCollectedData(displayUsers, validAttendance, targetBaseUrl)
+    await syncCollectedData(displayUsers, validAttendance, targetBaseUrl, {
+      syncUsers: syncDeviceUsers,
+      syncAttendance: syncDeviceAttendance,
+    })
 
     const targetUrl = normalizeBaseUrl(targetBaseUrl)
     const [backendUsers, backendAttendance] = await Promise.all([
@@ -130,7 +138,11 @@ export default function App() {
 
     pollingTimer.current = window.setInterval(async () => {
       try {
-        await pullDeviceData({ silent: true })
+        await pullDeviceData({
+          silent: true,
+          syncDeviceUsers: false,
+          syncDeviceAttendance: true,
+        })
       } catch (error) {
         setMessage({ type: 'error', text: error.message })
       }
@@ -151,17 +163,33 @@ export default function App() {
     return nextBaseUrl
   }
 
-  async function syncCollectedData(nextUsers, nextAttendance, targetBaseUrl = baseUrl) {
+  async function syncCollectedData(
+    nextUsers,
+    nextAttendance,
+    targetBaseUrl = baseUrl,
+    { syncUsers = true, syncAttendance = true } = {},
+  ) {
     const targetUrl = normalizeBaseUrl(targetBaseUrl)
 
     if (electronReady) {
-      await window.electronAPI.syncUsers({ baseUrl: targetUrl, users: nextUsers })
-      await window.electronAPI.syncAttendance({ baseUrl: targetUrl, logs: nextAttendance })
+      if (syncUsers) {
+        await window.electronAPI.syncUsers({ baseUrl: targetUrl, users: nextUsers })
+      }
+
+      if (syncAttendance) {
+        await window.electronAPI.syncAttendance({ baseUrl: targetUrl, logs: nextAttendance })
+      }
+
       return
     }
 
-    await syncUsersToApi(targetUrl, nextUsers)
-    await syncAttendanceToApi(targetUrl, nextAttendance)
+    if (syncUsers) {
+      await syncUsersToApi(targetUrl, nextUsers)
+    }
+
+    if (syncAttendance) {
+      await syncAttendanceToApi(targetUrl, nextAttendance)
+    }
   }
 
   async function handleConnect() {
@@ -209,9 +237,13 @@ export default function App() {
     setMessage({ type: 'info', text: 'Refreshing data...' })
 
     try {
-      if (electronReady && isDeviceConnected) {
-        await pullDeviceData({ silent: true })
-        setMessage({ type: 'success', text: 'Device data synced and latest server data loaded.' })
+      if (electronReady && isDeviceConnected && activeTab === 'attendance') {
+        await pullDeviceData({
+          silent: true,
+          syncDeviceUsers: false,
+          syncDeviceAttendance: true,
+        })
+        setMessage({ type: 'success', text: 'Attendance synced and latest server data loaded.' })
       } else {
         const targetUrl = normalizeBaseUrl(baseUrl)
         const [latestUsers, latestAttendance] = await Promise.all([
