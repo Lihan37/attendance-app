@@ -2,6 +2,15 @@ const { getCollections } = require('../db')
 
 const localAttendanceLogs = new Map()
 
+function normalizeTimestamp(value) {
+  const date = new Date(value)
+  return Number.isNaN(date.getTime()) ? null : date.toISOString()
+}
+
+function getAttendanceKey({ userId, timestamp, deviceIp }) {
+  return `${String(userId)}-${timestamp}-${deviceIp || ''}`
+}
+
 async function syncAttendance(req, res, next) {
   try {
     const logs = Array.isArray(req.body) ? req.body : req.body.logs
@@ -23,8 +32,10 @@ async function syncAttendance(req, res, next) {
       ;({ attendanceLogs, deletedAttendanceLogs } = getCollections())
     } catch (_error) {
       logs.forEach((log) => {
-        const timestamp = new Date(log.timestamp).toISOString()
-        const key = `${log.userId}-${timestamp}-${log.deviceIp || ''}`
+        const timestamp = normalizeTimestamp(log.timestamp)
+        if (!log.userId || !timestamp) return
+
+        const key = getAttendanceKey({ userId: log.userId, timestamp, deviceIp: log.deviceIp })
 
         localAttendanceLogs.set(key, {
           userId: String(log.userId),
@@ -39,12 +50,23 @@ async function syncAttendance(req, res, next) {
       return res.json({ synced: logs.length, syncedAt, localOnly: true })
     }
 
-    const normalizedLogs = logs.map((log) => ({
-      ...log,
-      userId: String(log.userId),
-      timestamp: new Date(log.timestamp).toISOString(),
-      deviceIp: log.deviceIp || '',
-    }))
+    const normalizedLogs = logs
+      .map((log) => {
+        const timestamp = normalizeTimestamp(log.timestamp)
+        if (!log.userId || !timestamp) return null
+
+        return {
+          ...log,
+          userId: String(log.userId),
+          timestamp,
+          deviceIp: log.deviceIp || '',
+        }
+      })
+      .filter(Boolean)
+
+    if (normalizedLogs.length === 0) {
+      return res.json({ synced: 0, skippedInvalid: logs.length, syncedAt })
+    }
 
     const deletedKeys = new Set(
       (
@@ -57,11 +79,13 @@ async function syncAttendance(req, res, next) {
             })),
           })
           .toArray()
-      ).map((log) => `${log.userId}-${log.timestamp}-${log.deviceIp || ''}`),
+      ).map((log) => getAttendanceKey(log)),
     )
 
     const activeLogs = normalizedLogs.filter(
-      (log) => !deletedKeys.has(`${log.userId}-${log.timestamp}-${log.deviceIp || ''}`),
+      (log) =>
+        !deletedKeys.has(getAttendanceKey(log)) &&
+        !deletedKeys.has(getAttendanceKey({ ...log, deviceIp: '' })),
     )
 
     if (activeLogs.length > 0) {
@@ -126,14 +150,18 @@ async function deleteAttendance(req, res, next) {
       return res.status(400).json({ message: 'userId and timestamp are required.' })
     }
 
-    const normalizedTimestamp = new Date(timestamp).toISOString()
+    const normalizedTimestamp = normalizeTimestamp(timestamp)
+
+    if (!normalizedTimestamp) {
+      return res.status(400).json({ message: 'timestamp is invalid.' })
+    }
 
     let attendanceLogs
 
     try {
       ;({ attendanceLogs } = getCollections())
     } catch (_error) {
-      const key = `${userId}-${normalizedTimestamp}-${deviceIp || ''}`
+      const key = getAttendanceKey({ userId, timestamp: normalizedTimestamp, deviceIp })
       localAttendanceLogs.delete(key)
       return res.json({ deleted: 1, localOnly: true })
     }
@@ -141,13 +169,27 @@ async function deleteAttendance(req, res, next) {
     const filter = {
       userId: String(userId),
       timestamp: normalizedTimestamp,
-      deviceIp: deviceIp || '',
     }
 
-    const result = await attendanceLogs.deleteOne(filter)
+    if (deviceIp) {
+      filter.deviceIp = deviceIp
+    }
+
+    const result = await attendanceLogs.deleteMany(filter)
     await deletedAttendanceLogs.updateOne(
-      filter,
-      { $set: { ...filter, deletedAt: new Date() } },
+      {
+        userId: String(userId),
+        timestamp: normalizedTimestamp,
+        deviceIp: deviceIp || '',
+      },
+      {
+        $set: {
+          userId: String(userId),
+          timestamp: normalizedTimestamp,
+          deviceIp: deviceIp || '',
+          deletedAt: new Date(),
+        },
+      },
       { upsert: true },
     )
 

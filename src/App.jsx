@@ -209,7 +209,7 @@ export default function App() {
   }
 
   async function handleDeleteRow(row) {
-    const confirmed = window.confirm('Delete this row from local app data?')
+    const confirmed = window.confirm('Delete this row from backend data?')
     if (!confirmed) return
 
     try {
