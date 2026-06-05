@@ -14,14 +14,13 @@ async function syncUsers(req, res, next) {
     const syncedAt = new Date()
 
     let usersCollection
-    let deletedUsers
 
     if (users.length === 0) {
       return res.json({ synced: 0, syncedAt })
     }
 
     try {
-      ;({ users: usersCollection, deletedUsers } = getCollections())
+      ;({ users: usersCollection } = getCollections())
     } catch (_error) {
       users.forEach((user) => {
         const key = `${user.userId}-${user.deviceIp || ''}`
@@ -44,30 +43,7 @@ async function syncUsers(req, res, next) {
       return res.json({ synced: 0, skippedInvalid: users.length, syncedAt })
     }
 
-    const deletedKeys = new Set(
-      (
-        await deletedUsers
-          .find({
-            $or: validUsers.flatMap((user) => [
-              {
-                userId: String(user.userId),
-                deviceIp: user.deviceIp || '',
-              },
-              {
-                userId: String(user.userId),
-                deviceIp: '',
-              },
-            ]),
-          })
-          .toArray()
-      ).map((user) => `${user.userId}-${user.deviceIp || ''}`),
-    )
-
-    const activeUsers = validUsers.filter(
-      (user) =>
-        !deletedKeys.has(`${String(user.userId)}-${user.deviceIp || ''}`) &&
-        !deletedKeys.has(`${String(user.userId)}-`),
-    )
+    const activeUsers = validUsers
 
     if (activeUsers.length > 0) {
       await usersCollection.bulkWrite(
@@ -96,7 +72,7 @@ async function syncUsers(req, res, next) {
 
     return res.json({
       synced: activeUsers.length,
-      skippedDeleted: validUsers.length - activeUsers.length,
+      skippedDeleted: 0,
       skippedInvalid: users.length - validUsers.length,
       syncedAt,
     })
@@ -108,10 +84,9 @@ async function syncUsers(req, res, next) {
 async function getUsers(req, res, next) {
   try {
     let users
-    let deletedUsers
 
     try {
-      ;({ users, deletedUsers } = getCollections())
+      ;({ users } = getCollections())
     } catch (_error) {
       return res.json(Array.from(localUsers.values()).sort((a, b) => a.userId.localeCompare(b.userId)))
     }
@@ -132,10 +107,9 @@ async function deleteUser(req, res, next) {
     }
 
     let users
-    let deletedUsers
 
     try {
-      ;({ users, deletedUsers } = getCollections())
+      ;({ users } = getCollections())
     } catch (_error) {
       const key = `${userId}-${deviceIp || ''}`
       localUsers.delete(key)
@@ -149,19 +123,6 @@ async function deleteUser(req, res, next) {
     }
 
     const result = await users.deleteMany(deleteFilter)
-
-    if (userId) {
-      const tombstoneFilter = {
-        userId: String(userId),
-        deviceIp: deviceIp || '',
-      }
-
-      await deletedUsers.updateOne(
-        tombstoneFilter,
-        { $set: { ...tombstoneFilter, deletedAt: new Date() } },
-        { upsert: true },
-      )
-    }
 
     return res.json({ deleted: result.deletedCount })
   } catch (error) {
