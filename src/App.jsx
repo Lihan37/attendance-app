@@ -54,6 +54,7 @@ export default function App() {
   const [message, setMessage] = useState(null)
   const [isConnecting, setIsConnecting] = useState(false)
   const [isRefreshing, setIsRefreshing] = useState(false)
+  const [isDeviceConnected, setIsDeviceConnected] = useState(false)
   const pollingTimer = useRef(null)
 
   const electronReady = Boolean(window.electronAPI)
@@ -177,6 +178,7 @@ export default function App() {
       const connection = await window.electronAPI.connectDevice(deviceConfig)
 
       if (connection.mock) {
+        setIsDeviceConnected(false)
         setUsers([])
         setAttendance([])
         setMessage({
@@ -186,6 +188,7 @@ export default function App() {
         return
       }
 
+      setIsDeviceConnected(true)
       await pullDeviceData({ silent: true, targetBaseUrl })
       startDevicePolling()
 
@@ -194,6 +197,7 @@ export default function App() {
         text: `${connection.message} Auto refresh is running every 10 seconds.`,
       })
     } catch (error) {
+      setIsDeviceConnected(false)
       setMessage({ type: 'error', text: error.message })
     } finally {
       setIsConnecting(false)
@@ -205,15 +209,20 @@ export default function App() {
     setMessage({ type: 'info', text: 'Refreshing data...' })
 
     try {
-      const targetUrl = normalizeBaseUrl(baseUrl)
-      const [latestUsers, latestAttendance] = await Promise.all([
-        fetchUsersFromApi(targetUrl),
-        fetchAttendanceFromApi(targetUrl),
-      ])
+      if (electronReady && isDeviceConnected) {
+        await pullDeviceData({ silent: true })
+        setMessage({ type: 'success', text: 'Device data synced and latest server data loaded.' })
+      } else {
+        const targetUrl = normalizeBaseUrl(baseUrl)
+        const [latestUsers, latestAttendance] = await Promise.all([
+          fetchUsersFromApi(targetUrl),
+          fetchAttendanceFromApi(targetUrl),
+        ])
 
-      setUsers(latestUsers)
-      setAttendance(latestAttendance)
-      setMessage({ type: 'success', text: 'Latest server data loaded.' })
+        setUsers(latestUsers)
+        setAttendance(latestAttendance.filter(isValidAttendanceLog))
+        setMessage({ type: 'success', text: 'Latest server data loaded.' })
+      }
     } catch (error) {
       setMessage({ type: 'error', text: error.message })
     } finally {
