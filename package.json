@@ -1,0 +1,98 @@
+{
+  "name": "attendance-system",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Desktop Attendance Management Software built with Electron, React, Vite, Tailwind CSS, Express, and MongoDB.",
+  "main": "electron/main.js",
+  "author": {
+    "name": "National IT Hub"
+  },
+  "scripts": {
+    "dev": "vite",
+    "electron": "electron .",
+    "server": "node server/index.js",
+    "dev:all": "concurrently \"npm run server\" \"npm run dev\" \"wait-on http://localhost:5173 && npm run electron\"",
+    "clean:dist": "powershell -NoProfile -Command \"if (Test-Path -LiteralPath dist) { Remove-Item -LiteralPath dist -Recurse -Force }\"",
+    "patch:zklib": "node scripts/patch-zklib-package.js",
+    "build": "vite build",
+    "dist": "set NODE_OPTIONS=--max-old-space-size=8192&& set CSC_IDENTITY_AUTO_DISCOVERY=false&& npm run clean:dist && npm run patch:zklib && npm run build && electron-builder --win nsis portable --x64",
+    "preview": "vite preview",
+    "start": "npm run server"
+  },
+  "dependencies": {
+    "axios": "latest",
+    "cors": "latest",
+    "dotenv": "latest",
+    "express": "latest",
+    "mongodb": "latest",
+    "zklib-js": "^1.3.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "latest",
+    "@vitejs/plugin-react": "latest",
+    "concurrently": "latest",
+    "electron": "latest",
+    "electron-builder": "latest",
+    "react": "latest",
+    "react-dom": "latest",
+    "tailwindcss": "latest",
+    "vite": "latest",
+    "wait-on": "latest"
+  },
+  "build": {
+    "appId": "com.nationalithub.attendance",
+    "productName": "Attendance Management Software",
+    "copyright": "Copyright (c) National IT Hub",
+    "asar": true,
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "dist-react/**/*",
+      "electron/**/*",
+      "package.json",
+      ".env.example"
+    ],
+    "extraResources": [
+      {
+        "from": ".env.example",
+        "to": ".env.example"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "signAndEditExecutable": false,
+      "artifactName": "${productName}-${target}.${ext}"
+    },
+    "nsis": {
+      "artifactName": "${productName} Setup.${ext}",
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Attendance Management Software",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "deleteAppDataOnUninstall": false
+    },
+    "portable": {
+      "artifactName": "${productName}.${ext}"
+    }
+  }
+}
