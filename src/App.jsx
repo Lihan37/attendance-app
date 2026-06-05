@@ -5,6 +5,8 @@ import StatusMessage from './components/StatusMessage.jsx'
 import {
   fetchAttendanceFromApi,
   fetchUsersFromApi,
+  deleteAllAttendanceFromApi,
+  deleteAllUsersFromApi,
   deleteAttendanceFromApi,
   deleteUserFromApi,
   normalizeBaseUrl,
@@ -216,12 +218,14 @@ export default function App() {
       if (activeTab === 'users') {
         await deleteUserFromApi(baseUrl, {
           userId: row.userId,
+          _id: row._id,
           deviceIp: row.deviceIp,
         })
 
         const nextUsers = users.filter(
           (user) =>
             !(
+              String(user._id || '') === String(row._id || '') ||
               String(user.userId) === String(row.userId) &&
               String(user.deviceIp || '') === String(row.deviceIp || '')
             ),
@@ -248,6 +252,26 @@ export default function App() {
       }
 
       setMessage({ type: 'success', text: 'Row deleted from backend.' })
+    } catch (error) {
+      setMessage({ type: 'error', text: error.message })
+    }
+  }
+
+  async function handleDeleteAll() {
+    const label = activeTab === 'users' ? 'all users' : 'all attendance logs'
+    const confirmed = window.confirm(`Delete ${label} from backend?`)
+    if (!confirmed) return
+
+    try {
+      if (activeTab === 'users') {
+        await deleteAllUsersFromApi(baseUrl)
+        setUsers([])
+      } else {
+        await deleteAllAttendanceFromApi(baseUrl)
+        setAttendance([])
+      }
+
+      setMessage({ type: 'success', text: `${label} deleted from backend.` })
     } catch (error) {
       setMessage({ type: 'error', text: error.message })
     }
@@ -376,14 +400,24 @@ export default function App() {
             </button>
           </div>
 
-          <button
-            className="rounded-full bg-[#008b88] px-7 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#007a77] disabled:cursor-not-allowed disabled:opacity-60"
-            type="button"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-          >
-            {isRefreshing ? 'Refreshing...' : 'Refresh'}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              className="rounded-full border border-red-300 bg-red-50 px-6 py-2 text-sm font-semibold text-red-700 shadow-sm transition hover:bg-red-100 disabled:cursor-not-allowed disabled:opacity-60"
+              type="button"
+              onClick={handleDeleteAll}
+              disabled={activeTab === 'users' ? users.length === 0 : attendance.length === 0}
+            >
+              Delete All
+            </button>
+            <button
+              className="rounded-full bg-[#008b88] px-7 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-[#007a77] disabled:cursor-not-allowed disabled:opacity-60"
+              type="button"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+            >
+              {isRefreshing ? 'Refreshing...' : 'Refresh'}
+            </button>
+          </div>
         </div>
 
         <DataTable
@@ -393,7 +427,7 @@ export default function App() {
           onDeleteRow={handleDeleteRow}
         />
 
-        <footer className="mt-auto pt-4 text-right text-sm font-semibold text-gray-700">
+        <footer className="shrink-0 pt-4 text-right text-sm font-semibold text-gray-700">
           Powered by National IT Hub
         </footer>
       </section>

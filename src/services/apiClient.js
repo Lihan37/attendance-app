@@ -64,11 +64,33 @@ export async function deleteUserFromApi(baseUrl, user) {
   }
 }
 
+export async function deleteAllUsersFromApi(baseUrl) {
+  const target = normalizeBaseUrl(baseUrl)
+  if (!target) throw new Error('Backend Base URL is required.')
+  try {
+    const { data } = await axios.delete(`${target}/api/users/delete-all`)
+    return data
+  } catch (error) {
+    throw getApiError(error)
+  }
+}
+
 export async function deleteAttendanceFromApi(baseUrl, log) {
   const target = normalizeBaseUrl(baseUrl)
   if (!target) throw new Error('Backend Base URL is required.')
   try {
     const { data } = await axios.delete(`${target}/api/attendance/delete`, { data: log })
+    return data
+  } catch (error) {
+    throw getApiError(error)
+  }
+}
+
+export async function deleteAllAttendanceFromApi(baseUrl) {
+  const target = normalizeBaseUrl(baseUrl)
+  if (!target) throw new Error('Backend Base URL is required.')
+  try {
+    const { data } = await axios.delete(`${target}/api/attendance/delete-all`)
     return data
   } catch (error) {
     throw getApiError(error)

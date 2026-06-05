@@ -1,5 +1,6 @@
 const express = require('express')
 const {
+  deleteAllAttendance,
   deleteAttendance,
   getAttendance,
   syncAttendance,
@@ -10,5 +11,6 @@ const router = express.Router()
 router.get('/', getAttendance)
 router.post('/sync', syncAttendance)
 router.delete('/delete', deleteAttendance)
+router.delete('/delete-all', deleteAllAttendance)
 
 module.exports = router

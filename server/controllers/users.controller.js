@@ -1,3 +1,4 @@
+const { ObjectId } = require('mongodb')
 const { getCollections } = require('../db')
 
 const localUsers = new Map()
@@ -37,11 +38,17 @@ async function syncUsers(req, res, next) {
       return res.json({ synced: users.length, syncedAt, localOnly: true })
     }
 
+    const validUsers = users.filter((user) => String(user.userId || '').trim())
+
+    if (validUsers.length === 0) {
+      return res.json({ synced: 0, skippedInvalid: users.length, syncedAt })
+    }
+
     const deletedKeys = new Set(
       (
         await deletedUsers
           .find({
-            $or: users.flatMap((user) => [
+            $or: validUsers.flatMap((user) => [
               {
                 userId: String(user.userId),
                 deviceIp: user.deviceIp || '',
@@ -56,7 +63,7 @@ async function syncUsers(req, res, next) {
       ).map((user) => `${user.userId}-${user.deviceIp || ''}`),
     )
 
-    const activeUsers = users.filter(
+    const activeUsers = validUsers.filter(
       (user) =>
         !deletedKeys.has(`${String(user.userId)}-${user.deviceIp || ''}`) &&
         !deletedKeys.has(`${String(user.userId)}-`),
@@ -87,7 +94,12 @@ async function syncUsers(req, res, next) {
       )
     }
 
-    return res.json({ synced: activeUsers.length, skippedDeleted: users.length - activeUsers.length, syncedAt })
+    return res.json({
+      synced: activeUsers.length,
+      skippedDeleted: validUsers.length - activeUsers.length,
+      skippedInvalid: users.length - validUsers.length,
+      syncedAt,
+    })
   } catch (error) {
     return next(error)
   }
@@ -113,10 +125,10 @@ async function getUsers(req, res, next) {
 
 async function deleteUser(req, res, next) {
   try {
-    const { userId, deviceIp } = req.body || {}
+    const { _id, userId, deviceIp } = req.body || {}
 
-    if (!userId) {
-      return res.status(400).json({ message: 'userId is required.' })
+    if (!_id && !userId) {
+      return res.status(400).json({ message: 'userId or _id is required.' })
     }
 
     let users
@@ -130,24 +142,72 @@ async function deleteUser(req, res, next) {
       return res.json({ deleted: 1, localOnly: true })
     }
 
-    const tombstoneFilter = {
-      userId: String(userId),
-      deviceIp: deviceIp || '',
-    }
+    const deleteFilter = _id ? { _id: new ObjectId(_id) } : { userId: String(userId) }
 
-    const deleteFilter = { userId: String(userId) }
-
-    if (deviceIp) {
+    if (!_id && deviceIp) {
       deleteFilter.deviceIp = deviceIp
     }
 
     const result = await users.deleteMany(deleteFilter)
-    await deletedUsers.updateOne(
-      tombstoneFilter,
-      { $set: { ...tombstoneFilter, deletedAt: new Date() } },
-      { upsert: true },
-    )
 
+    if (userId) {
+      const tombstoneFilter = {
+        userId: String(userId),
+        deviceIp: deviceIp || '',
+      }
+
+      await deletedUsers.updateOne(
+        tombstoneFilter,
+        { $set: { ...tombstoneFilter, deletedAt: new Date() } },
+        { upsert: true },
+      )
+    }
+
+    return res.json({ deleted: result.deletedCount })
+  } catch (error) {
+    return next(error)
+  }
+}
+
+async function deleteAllUsers(req, res, next) {
+  try {
+    let users
+    let deletedUsers
+
+    try {
+      ;({ users, deletedUsers } = getCollections())
+    } catch (_error) {
+      const deleted = localUsers.size
+      localUsers.clear()
+      return res.json({ deleted, localOnly: true })
+    }
+
+    const existingUsers = await users.find({}).toArray()
+    const deletedAt = new Date()
+    const tombstones = existingUsers
+      .filter((user) => String(user.userId || '').trim())
+      .map((user) => ({
+        updateOne: {
+          filter: {
+            userId: String(user.userId),
+            deviceIp: user.deviceIp || '',
+          },
+          update: {
+            $set: {
+              userId: String(user.userId),
+              deviceIp: user.deviceIp || '',
+              deletedAt,
+            },
+          },
+          upsert: true,
+        },
+      }))
+
+    if (tombstones.length > 0) {
+      await deletedUsers.bulkWrite(tombstones, { ordered: false })
+    }
+
+    const result = await users.deleteMany({})
     return res.json({ deleted: result.deletedCount })
   } catch (error) {
     return next(error)
@@ -158,4 +218,5 @@ module.exports = {
   syncUsers,
   getUsers,
   deleteUser,
+  deleteAllUsers,
 }

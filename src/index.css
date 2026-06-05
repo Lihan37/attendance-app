@@ -25,3 +25,10 @@ input {
 #root {
   min-height: 100vh;
 }
+
+.data-table-scroll {
+  height: calc(100vh - 560px);
+  min-height: 220px;
+  overflow-y: auto;
+  overflow-x: auto;
+}

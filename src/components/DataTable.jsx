@@ -16,9 +16,9 @@ export default function DataTable({ activeTab, users, attendance, onDeleteRow })
   }
 
   return (
-    <div className="mt-4 overflow-hidden border border-gray-300 bg-white">
+    <div className="data-table-scroll mt-4 border border-gray-300 bg-white">
       <table className="w-full border-collapse text-left text-sm">
-        <thead className="bg-[#008b88] text-white">
+        <thead className="sticky top-0 z-10 bg-[#008b88] text-white">
           <tr>
             <th className="w-16 border-r border-teal-700 px-4 py-3 font-semibold">Sl.</th>
             <th className="w-40 border-r border-teal-700 px-4 py-3 font-semibold">User ID</th>
