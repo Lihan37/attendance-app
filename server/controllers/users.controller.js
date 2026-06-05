@@ -41,10 +41,16 @@ async function syncUsers(req, res, next) {
       (
         await deletedUsers
           .find({
-            $or: users.map((user) => ({
-              userId: String(user.userId),
-              deviceIp: user.deviceIp || '',
-            })),
+            $or: users.flatMap((user) => [
+              {
+                userId: String(user.userId),
+                deviceIp: user.deviceIp || '',
+              },
+              {
+                userId: String(user.userId),
+                deviceIp: '',
+              },
+            ]),
           })
           .toArray()
       ).map((user) => `${user.userId}-${user.deviceIp || ''}`),
@@ -114,9 +120,10 @@ async function deleteUser(req, res, next) {
     }
 
     let users
+    let deletedUsers
 
     try {
-      ;({ users } = getCollections())
+      ;({ users, deletedUsers } = getCollections())
     } catch (_error) {
       const key = `${userId}-${deviceIp || ''}`
       localUsers.delete(key)
