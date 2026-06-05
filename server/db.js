@@ -30,6 +30,10 @@ async function connectDB() {
     db
       .collection('attendanceLogs')
       .createIndex({ userId: 1, timestamp: 1, deviceIp: 1 }, { unique: true }),
+    db.collection('deletedUsers').createIndex({ userId: 1, deviceIp: 1 }, { unique: true }),
+    db
+      .collection('deletedAttendanceLogs')
+      .createIndex({ userId: 1, timestamp: 1, deviceIp: 1 }, { unique: true }),
     db.collection('deviceConfigs').createIndex({ deviceIp: 1, deviceName: 1 }),
   ])
 
@@ -51,6 +55,8 @@ function getCollections() {
   return {
     users: database.collection('users'),
     attendanceLogs: database.collection('attendanceLogs'),
+    deletedUsers: database.collection('deletedUsers'),
+    deletedAttendanceLogs: database.collection('deletedAttendanceLogs'),
     deviceConfigs: database.collection('deviceConfigs'),
   }
 }

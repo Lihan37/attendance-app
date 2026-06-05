@@ -20,10 +20,26 @@ const DEFAULT_CONFIG = {
   useTcp: true,
 }
 
-const DEFAULT_BASE_URL = ''
+const DEFAULT_BASE_URL = 'https://attendance-app-production-f38f.up.railway.app'
 
 function getSavedState() {
-  return { baseUrl: DEFAULT_BASE_URL, deviceConfig: DEFAULT_CONFIG }
+  try {
+    const savedBaseUrl = localStorage.getItem('attendance.baseUrl') || DEFAULT_BASE_URL
+    const baseUrl =
+      savedBaseUrl.includes('127.0.0.1') || savedBaseUrl.includes('localhost')
+        ? DEFAULT_BASE_URL
+        : savedBaseUrl
+
+    return {
+      baseUrl,
+      deviceConfig: {
+        ...DEFAULT_CONFIG,
+        ...JSON.parse(localStorage.getItem('attendance.deviceConfig') || '{}'),
+      },
+    }
+  } catch (_error) {
+    return { baseUrl: DEFAULT_BASE_URL, deviceConfig: DEFAULT_CONFIG }
+  }
 }
 
 export default function App() {
@@ -72,7 +88,7 @@ export default function App() {
     return Array.from(rows.values())
   }
 
-  async function pullDeviceData({ silent = false } = {}) {
+  async function pullDeviceData({ silent = false, targetBaseUrl = baseUrl } = {}) {
     if (!electronReady) {
       throw new Error('Electron API is unavailable. Run the desktop app.')
     }
@@ -86,24 +102,22 @@ export default function App() {
     const displayUsers =
       deviceUsers.length > 0 ? deviceUsers : buildUsersFromAttendance(validAttendance)
 
-    setUsers((current) =>
-      mergeByKey(current, displayUsers, (user) => `${user.userId}-${user.deviceIp || ''}`),
-    )
-    setAttendance((current) =>
-      mergeByKey(
-        current.filter(isValidAttendanceLog),
-        validAttendance,
-        (log) => `${log.userId}-${log.timestamp}-${log.deviceIp || ''}`,
-      ).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp)),
-    )
+    await syncCollectedData(displayUsers, validAttendance, targetBaseUrl)
 
-    await syncCollectedData(displayUsers, validAttendance)
+    const targetUrl = normalizeBaseUrl(targetBaseUrl)
+    const [backendUsers, backendAttendance] = await Promise.all([
+      fetchUsersFromApi(targetUrl),
+      fetchAttendanceFromApi(targetUrl),
+    ])
+
+    setUsers(backendUsers)
+    setAttendance(backendAttendance.filter(isValidAttendanceLog))
 
     if (!silent) {
-      setMessage({ type: 'success', text: 'Latest device data loaded and queued/synced.' })
+      setMessage({ type: 'success', text: 'Latest backend data loaded.' })
     }
 
-    return { users: displayUsers, attendance: deviceAttendance }
+    return { users: backendUsers, attendance: backendAttendance }
   }
 
   function startDevicePolling() {
@@ -127,12 +141,15 @@ export default function App() {
   async function saveSettings() {
     const nextBaseUrl = normalizeBaseUrl(baseUrl)
 
+    localStorage.setItem('attendance.baseUrl', nextBaseUrl)
+    localStorage.setItem('attendance.deviceConfig', JSON.stringify(deviceConfig))
     setBaseUrl(nextBaseUrl)
-    setMessage({ type: 'success', text: 'Settings applied for this session.' })
+    setMessage({ type: 'success', text: 'Settings saved.' })
+    return nextBaseUrl
   }
 
-  async function syncCollectedData(nextUsers, nextAttendance) {
-    const targetUrl = normalizeBaseUrl(baseUrl)
+  async function syncCollectedData(nextUsers, nextAttendance, targetBaseUrl = baseUrl) {
+    const targetUrl = normalizeBaseUrl(targetBaseUrl)
 
     if (electronReady) {
       await window.electronAPI.syncUsers({ baseUrl: targetUrl, users: nextUsers })
@@ -149,14 +166,14 @@ export default function App() {
     setMessage({ type: 'info', text: 'Connecting to biometric device...' })
 
     try {
-      await saveSettings()
+      const targetBaseUrl = await saveSettings()
 
       if (!electronReady) {
         throw new Error('Electron API is unavailable. Run the app with npm run dev:all or npm run electron.')
       }
 
       const connection = await window.electronAPI.connectDevice(deviceConfig)
-      await pullDeviceData({ silent: true })
+      await pullDeviceData({ silent: true, targetBaseUrl })
       startDevicePolling()
 
       setMessage({
@@ -270,7 +287,7 @@ export default function App() {
           <input
             id="baseUrl"
             className="h-10 flex-1 rounded-sm border border-gray-400 bg-white px-3 text-gray-900 outline-none transition focus:border-[#008b88] focus:ring-2 focus:ring-teal-100"
-            placeholder="https://ishs.pbfsm.com"
+            placeholder="https://attendance-app-production-f38f.up.railway.app"
             value={baseUrl}
             onChange={(event) => setBaseUrl(event.target.value)}
           />

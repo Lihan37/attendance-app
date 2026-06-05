@@ -51,6 +51,7 @@
     "files": [
       "dist-react/**/*",
       "electron/**/*",
+      "server/device/**/*",
       "package.json",
       ".env.example"
     ],

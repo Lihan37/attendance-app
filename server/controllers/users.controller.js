@@ -13,9 +13,14 @@ async function syncUsers(req, res, next) {
     const syncedAt = new Date()
 
     let usersCollection
+    let deletedUsers
+
+    if (users.length === 0) {
+      return res.json({ synced: 0, syncedAt })
+    }
 
     try {
-      ;({ users: usersCollection } = getCollections())
+      ;({ users: usersCollection, deletedUsers } = getCollections())
     } catch (_error) {
       users.forEach((user) => {
         const key = `${user.userId}-${user.deviceIp || ''}`
@@ -32,9 +37,26 @@ async function syncUsers(req, res, next) {
       return res.json({ synced: users.length, syncedAt, localOnly: true })
     }
 
-    if (users.length > 0) {
+    const deletedKeys = new Set(
+      (
+        await deletedUsers
+          .find({
+            $or: users.map((user) => ({
+              userId: String(user.userId),
+              deviceIp: user.deviceIp || '',
+            })),
+          })
+          .toArray()
+      ).map((user) => `${user.userId}-${user.deviceIp || ''}`),
+    )
+
+    const activeUsers = users.filter(
+      (user) => !deletedKeys.has(`${String(user.userId)}-${user.deviceIp || ''}`),
+    )
+
+    if (activeUsers.length > 0) {
       await usersCollection.bulkWrite(
-        users.map((user) => ({
+        activeUsers.map((user) => ({
           updateOne: {
             filter: {
               userId: String(user.userId),
@@ -57,7 +79,7 @@ async function syncUsers(req, res, next) {
       )
     }
 
-    return res.json({ synced: users.length, syncedAt })
+    return res.json({ synced: activeUsers.length, skippedDeleted: users.length - activeUsers.length, syncedAt })
   } catch (error) {
     return next(error)
   }
@@ -66,9 +88,10 @@ async function syncUsers(req, res, next) {
 async function getUsers(req, res, next) {
   try {
     let users
+    let deletedUsers
 
     try {
-      ;({ users } = getCollections())
+      ;({ users, deletedUsers } = getCollections())
     } catch (_error) {
       return res.json(Array.from(localUsers.values()).sort((a, b) => a.userId.localeCompare(b.userId)))
     }
@@ -98,10 +121,17 @@ async function deleteUser(req, res, next) {
       return res.json({ deleted: 1, localOnly: true })
     }
 
-    const result = await users.deleteOne({
+    const filter = {
       userId: String(userId),
       deviceIp: deviceIp || '',
-    })
+    }
+
+    const result = await users.deleteOne(filter)
+    await deletedUsers.updateOne(
+      filter,
+      { $set: { ...filter, deletedAt: new Date() } },
+      { upsert: true },
+    )
 
     return res.json({ deleted: result.deletedCount })
   } catch (error) {
