@@ -78,8 +78,12 @@ function mapAttendance(rawLog, config) {
   const parsedTimestamp = rawTimestamp ? new Date(rawTimestamp) : new Date()
   const timestamp =
     Number.isNaN(parsedTimestamp.getTime()) || parsedTimestamp.getFullYear() <= 2000
-      ? new Date()
+      ? null
       : parsedTimestamp
+
+  if (!timestamp) {
+    return null
+  }
 
   return {
     userId: String(
@@ -161,7 +165,7 @@ async function getAttendances() {
 
   const response = await activeDevice.getAttendances()
   const logs = Array.isArray(response?.data) ? response.data : response
-  return logs.map((log) => mapAttendance(log, activeConfig))
+  return logs.map((log) => mapAttendance(log, activeConfig)).filter(Boolean)
 }
 
 async function disconnectDevice() {

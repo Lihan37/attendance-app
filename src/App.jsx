@@ -175,6 +175,17 @@ export default function App() {
       }
 
       const connection = await window.electronAPI.connectDevice(deviceConfig)
+
+      if (connection.mock) {
+        setUsers([])
+        setAttendance([])
+        setMessage({
+          type: 'error',
+          text: `${connection.message} Real device connection is required before syncing data.`,
+        })
+        return
+      }
+
       await pullDeviceData({ silent: true, targetBaseUrl })
       startDevicePolling()
 

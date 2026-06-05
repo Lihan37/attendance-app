@@ -182,31 +182,7 @@ async function deleteAllUsers(req, res, next) {
       return res.json({ deleted, localOnly: true })
     }
 
-    const existingUsers = await users.find({}).toArray()
-    const deletedAt = new Date()
-    const tombstones = existingUsers
-      .filter((user) => String(user.userId || '').trim())
-      .map((user) => ({
-        updateOne: {
-          filter: {
-            userId: String(user.userId),
-            deviceIp: user.deviceIp || '',
-          },
-          update: {
-            $set: {
-              userId: String(user.userId),
-              deviceIp: user.deviceIp || '',
-              deletedAt,
-            },
-          },
-          upsert: true,
-        },
-      }))
-
-    if (tombstones.length > 0) {
-      await deletedUsers.bulkWrite(tombstones, { ordered: false })
-    }
-
+    await deletedUsers.deleteMany({})
     const result = await users.deleteMany({})
     return res.json({ deleted: result.deletedCount })
   } catch (error) {
