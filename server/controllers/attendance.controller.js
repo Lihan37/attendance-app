@@ -157,9 +157,10 @@ async function deleteAttendance(req, res, next) {
     }
 
     let attendanceLogs
+    let deletedAttendanceLogs
 
     try {
-      ;({ attendanceLogs } = getCollections())
+      ;({ attendanceLogs, deletedAttendanceLogs } = getCollections())
     } catch (_error) {
       const key = getAttendanceKey({ userId, timestamp: normalizedTimestamp, deviceIp })
       localAttendanceLogs.delete(key)
