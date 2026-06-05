@@ -67,9 +67,9 @@ async function startServer({ port = Number(process.env.PORT || 5000), logger } =
 
   return new Promise((resolve, reject) => {
     const app = createApp({ logger })
-    const server = app.listen(port, '127.0.0.1', () => {
-      console.log(`Attendance API running on http://localhost:${port}`)
-      logger?.info?.(`Attendance API running on http://127.0.0.1:${port}`)
+    const server = app.listen(port, '0.0.0.0', () => {
+      console.log(`Attendance API running on port ${port}`)
+      logger?.info?.(`Attendance API running on 0.0.0.0:${port}`)
       resolve(server)
     })
 
