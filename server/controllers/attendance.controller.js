@@ -24,14 +24,13 @@ async function syncAttendance(req, res, next) {
     let attendanceLogs
     let deletedAttendanceLogs
     let users
-    let deletedUsers
 
     if (logs.length === 0) {
       return res.json({ synced: 0, syncedAt })
     }
 
     try {
-      ;({ attendanceLogs, deletedAttendanceLogs, users, deletedUsers } = getCollections())
+      ;({ attendanceLogs, deletedAttendanceLogs, users } = getCollections())
     } catch (_error) {
       logs.forEach((log) => {
         const timestamp = normalizeTimestamp(log.timestamp)
@@ -129,26 +128,8 @@ async function syncAttendance(req, res, next) {
       const candidateUsers = Array.from(userCandidates.values())
 
       if (candidateUsers.length > 0) {
-        const deletedUserKeys = new Set(
-          (
-            await deletedUsers
-              .find({
-                $or: candidateUsers.map((user) => ({
-                  userId: user.userId,
-                  deviceIp: user.deviceIp,
-                })),
-              })
-              .toArray()
-          ).map((user) => `${user.userId}-${user.deviceIp || ''}`),
-        )
-
-        const activeUsers = candidateUsers.filter(
-          (user) => !deletedUserKeys.has(`${user.userId}-${user.deviceIp}`),
-        )
-
-        if (activeUsers.length > 0) {
-          await users.bulkWrite(
-            activeUsers.map((user) => ({
+        await users.bulkWrite(
+          candidateUsers.map((user) => ({
               updateOne: {
                 filter: {
                   userId: user.userId,
@@ -160,9 +141,8 @@ async function syncAttendance(req, res, next) {
                 upsert: true,
               },
             })),
-            { ordered: false },
-          )
-        }
+          { ordered: false },
+        )
       }
     }
 
