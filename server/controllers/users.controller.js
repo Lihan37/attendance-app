@@ -106,10 +106,9 @@ async function syncUsers(req, res, next) {
 async function getUsers(req, res, next) {
   try {
     let users
-    let deletedUsers
 
     try {
-      ;({ users, deletedUsers } = getCollections())
+      ;({ users } = getCollections())
     } catch (_error) {
       return res.json(Array.from(localUsers.values()).sort((a, b) => a.userId.localeCompare(b.userId)))
     }
@@ -130,9 +129,10 @@ async function deleteUser(req, res, next) {
     }
 
     let users
+    let deletedUsers
 
     try {
-      ;({ users } = getCollections())
+      ;({ users, deletedUsers } = getCollections())
     } catch (_error) {
       const key = `${userId}-${deviceIp || ''}`
       localUsers.delete(key)

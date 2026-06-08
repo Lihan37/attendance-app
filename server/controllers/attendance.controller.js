@@ -124,10 +124,9 @@ async function syncAttendance(req, res, next) {
 async function getAttendance(req, res, next) {
   try {
     let attendanceLogs
-    let deletedAttendanceLogs
 
     try {
-      ;({ attendanceLogs, deletedAttendanceLogs } = getCollections())
+      ;({ attendanceLogs } = getCollections())
     } catch (_error) {
       return res.json(
         Array.from(localAttendanceLogs.values()).sort(
@@ -158,9 +157,10 @@ async function deleteAttendance(req, res, next) {
     }
 
     let attendanceLogs
+    let deletedAttendanceLogs
 
     try {
-      ;({ attendanceLogs } = getCollections())
+      ;({ attendanceLogs, deletedAttendanceLogs } = getCollections())
     } catch (_error) {
       const key = getAttendanceKey({ userId, timestamp: normalizedTimestamp, deviceIp })
       localAttendanceLogs.delete(key)
