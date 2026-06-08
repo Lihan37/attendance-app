@@ -22,13 +22,14 @@ async function syncAttendance(req, res, next) {
     const syncedAt = new Date()
 
     let attendanceLogs
+    let deletedAttendanceLogs
 
     if (logs.length === 0) {
       return res.json({ synced: 0, syncedAt })
     }
 
     try {
-      ;({ attendanceLogs } = getCollections())
+      ;({ attendanceLogs, deletedAttendanceLogs } = getCollections())
     } catch (_error) {
       logs.forEach((log) => {
         const timestamp = normalizeTimestamp(log.timestamp)
@@ -67,7 +68,21 @@ async function syncAttendance(req, res, next) {
       return res.json({ synced: 0, skippedInvalid: logs.length, syncedAt })
     }
 
-    const activeLogs = normalizedLogs
+    const deletedKeys = new Set(
+      (
+        await deletedAttendanceLogs
+          .find({
+            $or: normalizedLogs.map((log) => ({
+              userId: log.userId,
+              timestamp: log.timestamp,
+              deviceIp: log.deviceIp,
+            })),
+          })
+          .toArray()
+      ).map((log) => getAttendanceKey(log)),
+    )
+
+    const activeLogs = normalizedLogs.filter((log) => !deletedKeys.has(getAttendanceKey(log)))
 
     if (activeLogs.length > 0) {
       await attendanceLogs.bulkWrite(
@@ -97,7 +112,7 @@ async function syncAttendance(req, res, next) {
 
     return res.json({
       synced: activeLogs.length,
-      skippedDeleted: 0,
+      skippedDeleted: normalizedLogs.length - activeLogs.length,
       skippedInvalid: logs.length - normalizedLogs.length,
       syncedAt,
     })
@@ -109,9 +124,10 @@ async function syncAttendance(req, res, next) {
 async function getAttendance(req, res, next) {
   try {
     let attendanceLogs
+    let deletedAttendanceLogs
 
     try {
-      ;({ attendanceLogs } = getCollections())
+      ;({ attendanceLogs, deletedAttendanceLogs } = getCollections())
     } catch (_error) {
       return res.json(
         Array.from(localAttendanceLogs.values()).sort(
@@ -162,6 +178,18 @@ async function deleteAttendance(req, res, next) {
 
     const result = await attendanceLogs.deleteMany(filter)
 
+    const tombstoneFilter = {
+      userId: String(userId),
+      timestamp: normalizedTimestamp,
+      deviceIp: deviceIp || '',
+    }
+
+    await deletedAttendanceLogs.updateOne(
+      tombstoneFilter,
+      { $set: { ...tombstoneFilter, deletedAt: new Date() } },
+      { upsert: true },
+    )
+
     return res.json({ deleted: result.deletedCount })
   } catch (error) {
     return next(error)
@@ -179,6 +207,30 @@ async function deleteAllAttendance(req, res, next) {
       const deleted = localAttendanceLogs.size
       localAttendanceLogs.clear()
       return res.json({ deleted, localOnly: true })
+    }
+
+    const existingLogs = await attendanceLogs.find({}).toArray()
+    const deletedAt = new Date()
+    const tombstones = existingLogs
+      .filter((log) => log.userId && normalizeTimestamp(log.timestamp))
+      .map((log) => {
+        const tombstoneFilter = {
+          userId: String(log.userId),
+          timestamp: normalizeTimestamp(log.timestamp),
+          deviceIp: log.deviceIp || '',
+        }
+
+        return {
+          updateOne: {
+            filter: tombstoneFilter,
+            update: { $set: { ...tombstoneFilter, deletedAt } },
+            upsert: true,
+          },
+        }
+      })
+
+    if (tombstones.length > 0) {
+      await deletedAttendanceLogs.bulkWrite(tombstones, { ordered: false })
     }
 
     const result = await attendanceLogs.deleteMany({})
