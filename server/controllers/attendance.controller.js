@@ -23,13 +23,15 @@ async function syncAttendance(req, res, next) {
 
     let attendanceLogs
     let deletedAttendanceLogs
+    let users
+    let deletedUsers
 
     if (logs.length === 0) {
       return res.json({ synced: 0, syncedAt })
     }
 
     try {
-      ;({ attendanceLogs, deletedAttendanceLogs } = getCollections())
+      ;({ attendanceLogs, deletedAttendanceLogs, users, deletedUsers } = getCollections())
     } catch (_error) {
       logs.forEach((log) => {
         const timestamp = normalizeTimestamp(log.timestamp)
@@ -108,6 +110,60 @@ async function syncAttendance(req, res, next) {
         })),
         { ordered: false },
       )
+
+      const userCandidates = new Map()
+
+      activeLogs.forEach((log) => {
+        if (!log.userId || userCandidates.has(`${log.userId}-${log.deviceIp}`)) return
+
+        userCandidates.set(`${log.userId}-${log.deviceIp}`, {
+          userId: log.userId,
+          name: 'Unknown User',
+          cardNumber: '',
+          deviceName: log.deviceName || '',
+          deviceIp: log.deviceIp || '',
+          syncedAt,
+        })
+      })
+
+      const candidateUsers = Array.from(userCandidates.values())
+
+      if (candidateUsers.length > 0) {
+        const deletedUserKeys = new Set(
+          (
+            await deletedUsers
+              .find({
+                $or: candidateUsers.map((user) => ({
+                  userId: user.userId,
+                  deviceIp: user.deviceIp,
+                })),
+              })
+              .toArray()
+          ).map((user) => `${user.userId}-${user.deviceIp || ''}`),
+        )
+
+        const activeUsers = candidateUsers.filter(
+          (user) => !deletedUserKeys.has(`${user.userId}-${user.deviceIp}`),
+        )
+
+        if (activeUsers.length > 0) {
+          await users.bulkWrite(
+            activeUsers.map((user) => ({
+              updateOne: {
+                filter: {
+                  userId: user.userId,
+                  deviceIp: user.deviceIp,
+                },
+                update: {
+                  $setOnInsert: user,
+                },
+                upsert: true,
+              },
+            })),
+            { ordered: false },
+          )
+        }
+      }
     }
 
     return res.json({

@@ -82,13 +82,12 @@ export default function App() {
     return Boolean(log.userId) && !Number.isNaN(timestamp.getTime()) && timestamp.getFullYear() > 2000
   }
 
-  function mergeByKey(currentRows, nextRows, getKey) {
-    const rows = new Map()
+  function buildDisplayUsers(backendUsers, backendAttendance) {
+    if (backendUsers.length > 0) {
+      return backendUsers
+    }
 
-    currentRows.forEach((row) => rows.set(getKey(row), row))
-    nextRows.forEach((row) => rows.set(getKey(row), row))
-
-    return Array.from(rows.values())
+    return buildUsersFromAttendance(backendAttendance.filter(isValidAttendanceLog))
   }
 
   async function pullDeviceData({
@@ -121,8 +120,10 @@ export default function App() {
       fetchAttendanceFromApi(targetUrl),
     ])
 
-    setUsers(backendUsers)
-    setAttendance(backendAttendance.filter(isValidAttendanceLog))
+    const validBackendAttendance = backendAttendance.filter(isValidAttendanceLog)
+
+    setUsers(buildDisplayUsers(backendUsers, validBackendAttendance))
+    setAttendance(validBackendAttendance)
 
     if (!silent) {
       setMessage({ type: 'success', text: 'Latest backend data loaded.' })
@@ -146,7 +147,7 @@ export default function App() {
       } catch (error) {
         setMessage({ type: 'error', text: error.message })
       }
-    }, 10000)
+    }, 3000)
   }
 
   function updateConfig(key, value) {
@@ -251,8 +252,10 @@ export default function App() {
           fetchAttendanceFromApi(targetUrl),
         ])
 
-        setUsers(latestUsers)
-        setAttendance(latestAttendance.filter(isValidAttendanceLog))
+        const validLatestAttendance = latestAttendance.filter(isValidAttendanceLog)
+
+        setUsers(buildDisplayUsers(latestUsers, validLatestAttendance))
+        setAttendance(validLatestAttendance)
         setMessage({ type: 'success', text: 'Latest server data loaded.' })
       }
     } catch (error) {
